@@ -7,44 +7,57 @@ import os
 import subprocess
 import zipfile
 import requests
+import threading
+import time
 
 app = FastAPI()
 
+MODEL_PATH = "bert_domates_model_quant.onnx"
+TOKENIZER_PATH = "bert_domates_model_pytorch"
+
 # Google Drive'dan dosya indirme fonksiyonu
-def download_file_from_google_drive(url, output):
-    print("🔽 Dosya indiriliyor:", output)
+def download_file(url, output_path):
+    print(f"🔽 {output_path} indiriliyor...")
     r = requests.get(url)
-    with open(output, "wb") as f:
+    with open(output_path, "wb") as f:
         f.write(r.content)
+    print(f"✅ {output_path} indirildi.")
 
-# Eğer model dosyası yoksa Google Drive'dan indir
-if not os.path.exists("bert_domates_model.onnx"):
-    download_file_from_google_drive(
-        "https://drive.google.com/uc?export=download&id=1bExVJ1cuR3gAwnStUd6ceS-qyrpmzGJr",  # onnx dosyası
-        "bert_domates_model.onnx"
-    )
+# Arka planda model ve tokenizer yükleme
+def setup_model_and_tokenizer():
+    if not os.path.exists(MODEL_PATH):
+        download_file(
+            "https://drive.google.com/uc?export=download&id=1bExVJ1cuR3gAwnStUd6ceS-qyrpmzGJr",
+            MODEL_PATH
+        )
 
-# Eğer tokenizer klasörü yoksa indir ve çıkar
-if not os.path.exists("bert_domates_model_pytorch"):
-    zip_path = "tokenizer.zip"
-    download_file_from_google_drive(
-        "https://drive.google.com/uc?export=download&id=1o3xjodOVSRU-70Vg9vSQUUUP9M99L7XB",  # tokenizer zip
-        zip_path
-    )
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        zip_ref.extractall("bert_domates_model_pytorch")
-    os.remove(zip_path)
+    if not os.path.exists(TOKENIZER_PATH):
+        zip_path = "tokenizer.zip"
+        download_file(
+            "https://drive.google.com/uc?export=download&id=1o3xjodOVSRU-70Vg9vSQUUUP9M99L7XB",
+            zip_path
+        )
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(TOKENIZER_PATH)
+        os.remove(zip_path)
 
-# Tokenizer ve ONNX modeli yükle
-tokenizer = AutoTokenizer.from_pretrained("./bert_domates_model_pytorch")
-session = onnxruntime.InferenceSession("bert_domates_model.onnx")
+    global tokenizer, session
+    tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_PATH)
+    session = onnxruntime.InferenceSession(MODEL_PATH)
 
+# Başlangıçta ayrı bir thread'de indirme/yükleme
+threading.Thread(target=setup_model_and_tokenizer).start()
+
+# Giriş veri yapısı
 class InputText(BaseModel):
     text: str
 
 @app.post("/predict")
 def predict(input: InputText):
     try:
+        if "tokenizer" not in globals() or "session" not in globals():
+            return {"error": "⏳ Model ve tokenizer henüz yükleniyor, lütfen birkaç saniye sonra tekrar deneyin."}
+
         encoding = tokenizer.encode_plus(
             input.text,
             padding="max_length",
