@@ -4,14 +4,3 @@ transformers
 onnxruntime
 numpy
 requests
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.env
-.venv
-.DS_Store
-.vscode/
-.idea/
-*.safetensors
-*.onnx
