@@ -3,61 +3,33 @@ from pydantic import BaseModel
 from transformers import AutoTokenizer
 import onnxruntime
 import numpy as np
-import os
-import subprocess
-import zipfile
 import requests
-import threading
-import time
 
 app = FastAPI()
 
-MODEL_PATH = "bert_domates_model_quant.onnx"
-TOKENIZER_PATH = "bert_domates_model_pytorch"
+# Hugging Face model bilgileri
+hf_model_id = "Kahsi13/DomatesRailway"
+onnx_url = f"https://huggingface.co/{hf_model_id}/resolve/main/bert_domates_model.onnx"
 
-# Google Drive'dan dosya indirme fonksiyonu
-def download_file(url, output_path):
-    print(f"🔽 {output_path} indiriliyor...")
-    r = requests.get(url)
-    with open(output_path, "wb") as f:
+# ONNX model dosyasını indir (sadece ilk çalıştırmada)
+onnx_path = "bert_domates_model.onnx"
+if not os.path.exists(onnx_path):
+    print("🔽 Hugging Face'den model indiriliyor...")
+    r = requests.get(onnx_url)
+    with open(onnx_path, "wb") as f:
         f.write(r.content)
-    print(f"✅ {output_path} indirildi.")
 
-# Arka planda model ve tokenizer yükleme
-def setup_model_and_tokenizer():
-    if not os.path.exists(MODEL_PATH):
-        download_file(
-            "https://drive.google.com/uc?export=download&id=1bExVJ1cuR3gAwnStUd6ceS-qyrpmzGJr",
-            MODEL_PATH
-        )
+# Tokenizer ve ONNX oturumu
+tokenizer = AutoTokenizer.from_pretrained(hf_model_id)
+session = onnxruntime.InferenceSession(onnx_path)
 
-    if not os.path.exists(TOKENIZER_PATH):
-        zip_path = "tokenizer.zip"
-        download_file(
-            "https://drive.google.com/uc?export=download&id=1o3xjodOVSRU-70Vg9vSQUUUP9M99L7XB",
-            zip_path
-        )
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(TOKENIZER_PATH)
-        os.remove(zip_path)
-
-    global tokenizer, session
-    tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_PATH)
-    session = onnxruntime.InferenceSession(MODEL_PATH)
-
-# Başlangıçta ayrı bir thread'de indirme/yükleme
-threading.Thread(target=setup_model_and_tokenizer).start()
-
-# Giriş veri yapısı
+# Giriş modeli
 class InputText(BaseModel):
     text: str
 
 @app.post("/predict")
 def predict(input: InputText):
     try:
-        if "tokenizer" not in globals() or "session" not in globals():
-            return {"error": "⏳ Model ve tokenizer henüz yükleniyor, lütfen birkaç saniye sonra tekrar deneyin."}
-
         encoding = tokenizer.encode_plus(
             input.text,
             padding="max_length",
