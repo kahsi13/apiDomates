@@ -8,7 +8,7 @@ app = FastAPI()
 
 # Tokenizer ve ONNX modeli yükle
 tokenizer = AutoTokenizer.from_pretrained("Kahsi13/DomatesRailway")
-session = onnxruntime.InferenceSession("bert_domates_model_quant.onnx")  # 👈 quant dosyası
+session = onnxruntime.InferenceSession("bert_domates_model_quant.onnx")
 
 class InputText(BaseModel):
     text: str
